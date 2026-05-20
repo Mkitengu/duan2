@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   X,
   Send,
@@ -13,13 +13,15 @@ import {
   ExternalLink,
   ArrowLeft,
   MessageCircle,
+  Store,
 } from "lucide-react";
 import { useCartStore } from "@/store/useCartStore";
+import { useOrderHistoryStore } from "@/store/useOrderHistoryStore";
 import { formatCurrency } from "@/utils/currency";
 import {
   generateOrderMessage,
   openZaloShare,
-  openZaloChat,
+  openZaloDirect,
   copyToClipboard,
   CustomerInfo,
 } from "@/utils/zalo";
@@ -27,9 +29,12 @@ import { motion, AnimatePresence } from "framer-motion";
 
 type FormStep = "info" | "preview" | "success";
 
+const SHOP_PHONE_KEY = "water-order-shop-phone";
+
 export default function CustomerForm() {
   const { items, isOrderFormOpen, setOrderFormOpen, calculateTotal, clearCart } =
     useCartStore();
+  const { addOrder } = useOrderHistoryStore();
   const total = calculateTotal();
 
   const [customer, setCustomer] = useState<CustomerInfo>({
@@ -38,14 +43,28 @@ export default function CustomerForm() {
     address: "",
     note: "",
   });
+  const [shopPhone, setShopPhone] = useState("");
 
-  const [errors, setErrors] = useState<Partial<CustomerInfo>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [step, setStep] = useState<FormStep>("info");
   const [orderMessage, setOrderMessage] = useState("");
   const [copied, setCopied] = useState(false);
 
+  // Load saved shop phone from localStorage
+  useEffect(() => {
+    const savedPhone = localStorage.getItem(SHOP_PHONE_KEY);
+    if (savedPhone) setShopPhone(savedPhone);
+  }, []);
+
+  // Save shop phone when changed
+  useEffect(() => {
+    if (shopPhone.trim()) {
+      localStorage.setItem(SHOP_PHONE_KEY, shopPhone.trim());
+    }
+  }, [shopPhone]);
+
   const validateForm = (): boolean => {
-    const newErrors: Partial<CustomerInfo> = {};
+    const newErrors: Record<string, string> = {};
 
     if (!customer.name.trim()) {
       newErrors.name = "Vui lòng nhập tên";
@@ -59,6 +78,12 @@ export default function CustomerForm() {
 
     if (!customer.address.trim()) {
       newErrors.address = "Vui lòng nhập địa chỉ";
+    }
+
+    if (!shopPhone.trim()) {
+      newErrors.shopPhone = "Vui lòng nhập SĐT Zalo quán";
+    } else if (!/^(0|\+84)[0-9]{9,10}$/.test(shopPhone.trim())) {
+      newErrors.shopPhone = "Số điện thoại quán không hợp lệ";
     }
 
     setErrors(newErrors);
@@ -87,22 +112,31 @@ export default function CustomerForm() {
     }
   };
 
-  const handleZaloShare = () => {
-    openZaloShare(orderMessage);
-    setStep("success");
-    setTimeout(() => {
-      handleClose();
-    }, 3000);
+  const saveOrder = (status: "sent" | "pending") => {
+    addOrder({
+      customer,
+      shopPhone: shopPhone.trim(),
+      items: items.map((item) => ({
+        productName: item.product.name,
+        quantity: item.quantity,
+        price: item.product.price,
+      })),
+      total,
+      message: orderMessage,
+      status,
+    });
   };
 
-  const handleZaloChat = async () => {
-    await copyToClipboard(orderMessage);
-    setCopied(true);
-    openZaloChat();
+  const handleZaloDirect = async () => {
+    saveOrder("sent");
+    await openZaloDirect(shopPhone.trim(), orderMessage);
     setStep("success");
-    setTimeout(() => {
-      handleClose();
-    }, 3000);
+  };
+
+  const handleZaloShare = () => {
+    saveOrder("sent");
+    openZaloShare(orderMessage);
+    setStep("success");
   };
 
   const handleClose = () => {
@@ -123,36 +157,40 @@ export default function CustomerForm() {
 
   const inputFields = [
     {
-      key: "name" as keyof CustomerInfo,
+      key: "name",
       label: "Tên khách hàng",
       icon: User,
       placeholder: "Nguyễn Văn A",
       type: "text",
       required: true,
+      isCustomer: true,
     },
     {
-      key: "phone" as keyof CustomerInfo,
-      label: "Số điện thoại",
+      key: "phone",
+      label: "SĐT khách hàng",
       icon: Phone,
-      placeholder: "0123456789",
+      placeholder: "0912345678",
       type: "tel",
       required: true,
+      isCustomer: true,
     },
     {
-      key: "address" as keyof CustomerInfo,
+      key: "address",
       label: "Địa chỉ giao hàng",
       icon: MapPin,
       placeholder: "123 Đường ABC, Quận 1, TP.HCM",
       type: "text",
       required: true,
+      isCustomer: true,
     },
     {
-      key: "note" as keyof CustomerInfo,
+      key: "note",
       label: "Ghi chú",
       icon: MessageSquare,
       placeholder: "Ít đá, thêm đường...",
       type: "text",
       required: false,
+      isCustomer: true,
     },
   ];
 
@@ -194,7 +232,7 @@ export default function CustomerForm() {
                         Thông tin đặt hàng
                       </h2>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        Vui lòng điền thông tin giao hàng
+                        Điền thông tin giao hàng & SĐT Zalo quán
                       </p>
                     </div>
                     <motion.button
@@ -209,6 +247,58 @@ export default function CustomerForm() {
 
                   {/* Form */}
                   <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                    {/* Shop Phone - Highlighted */}
+                    <div className="bg-gradient-to-r from-blue-50 to-teal-50 rounded-2xl p-4 border border-blue-200">
+                      <label className="block text-sm font-bold text-blue-800 mb-1.5">
+                        <span className="flex items-center gap-1.5">
+                          <Store className="w-4 h-4" />
+                          SĐT Zalo quán nhận đơn
+                          <span className="text-red-400">*</span>
+                        </span>
+                      </label>
+                      <p className="text-xs text-blue-500 mb-2">
+                        Đơn hàng sẽ được gửi trực tiếp đến Zalo số này
+                      </p>
+                      <div className="relative">
+                        <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400" />
+                        <input
+                          type="tel"
+                          value={shopPhone}
+                          onChange={(e) => {
+                            setShopPhone(e.target.value);
+                            if (errors.shopPhone) {
+                              setErrors({ ...errors, shopPhone: "" });
+                            }
+                          }}
+                          placeholder="0901234567"
+                          className={`w-full pl-11 pr-4 py-3 rounded-xl border ${
+                            errors.shopPhone
+                              ? "border-red-300 bg-red-50/50"
+                              : "border-blue-200 bg-white"
+                          } focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all text-sm text-slate-800 placeholder:text-slate-300 font-medium`}
+                        />
+                      </div>
+                      {errors.shopPhone && (
+                        <motion.p
+                          initial={{ opacity: 0, y: -5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="text-xs text-red-500 mt-1 ml-1"
+                        >
+                          {errors.shopPhone}
+                        </motion.p>
+                      )}
+                    </div>
+
+                    {/* Divider */}
+                    <div className="flex items-center gap-3 pt-1">
+                      <div className="flex-1 h-px bg-slate-200" />
+                      <span className="text-xs text-slate-400 font-medium">
+                        Thông tin khách hàng
+                      </span>
+                      <div className="flex-1 h-px bg-slate-200" />
+                    </div>
+
+                    {/* Customer fields */}
                     {inputFields.map((field) => (
                       <div key={field.key}>
                         <label className="block text-sm font-medium text-slate-700 mb-1.5">
@@ -218,10 +308,12 @@ export default function CustomerForm() {
                           )}
                         </label>
                         <div className="relative">
-                          <field.icon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400" />
+                          <field.icon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                           <input
                             type={field.type}
-                            value={customer[field.key]}
+                            value={
+                              customer[field.key as keyof CustomerInfo]
+                            }
                             onChange={(e) => {
                               setCustomer({
                                 ...customer,
@@ -230,7 +322,7 @@ export default function CustomerForm() {
                               if (errors[field.key]) {
                                 setErrors({
                                   ...errors,
-                                  [field.key]: undefined,
+                                  [field.key]: "",
                                 });
                               }
                             }}
@@ -332,7 +424,10 @@ export default function CustomerForm() {
                           Gửi qua Zalo
                         </h2>
                         <p className="text-xs text-slate-400 mt-0.5">
-                          Chọn cách gửi đơn hàng
+                          Gửi đến Zalo:{" "}
+                          <span className="font-semibold text-blue-500">
+                            {shopPhone}
+                          </span>
                         </p>
                       </div>
                     </div>
@@ -386,23 +481,22 @@ export default function CustomerForm() {
 
                     {/* Zalo Buttons */}
                     <div className="space-y-3">
-                      {/* Option 1: Share via Zalo (Recommended) */}
+                      {/* Option 1: Direct Chat (Recommended) */}
                       <motion.button
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
-                        onClick={handleZaloShare}
+                        onClick={handleZaloDirect}
                         className="w-full py-4 px-5 rounded-2xl bg-[#0068FF] text-white font-bold text-sm shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all flex items-center gap-4"
                       >
                         <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
-                          <Send className="w-5 h-5" />
+                          <MessageCircle className="w-5 h-5" />
                         </div>
                         <div className="text-left">
                           <div className="font-bold text-base">
-                            Chia sẻ qua Zalo
+                            Gửi trực tiếp qua Zalo
                           </div>
                           <div className="text-blue-200 text-xs mt-0.5">
-                            Mở Zalo → chọn shop → gửi tin nhắn (nội dung có
-                            sẵn)
+                            Mở chat Zalo {shopPhone} → dán nội dung → gửi
                           </div>
                         </div>
                         <ExternalLink className="w-4 h-4 ml-auto flex-shrink-0 opacity-60" />
@@ -417,22 +511,22 @@ export default function CustomerForm() {
                         <div className="flex-1 h-px bg-slate-200" />
                       </div>
 
-                      {/* Option 2: Open Direct Chat */}
+                      {/* Option 2: Share via Zalo */}
                       <motion.button
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
-                        onClick={handleZaloChat}
+                        onClick={handleZaloShare}
                         className="w-full py-4 px-5 rounded-2xl bg-white border-2 border-slate-200 text-slate-700 font-bold text-sm hover:border-blue-300 hover:bg-blue-50/50 transition-all flex items-center gap-4"
                       >
                         <div className="w-11 h-11 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
-                          <MessageCircle className="w-5 h-5 text-slate-500" />
+                          <Send className="w-5 h-5 text-slate-500" />
                         </div>
                         <div className="text-left">
                           <div className="font-bold text-base">
-                            Mở chat Zalo shop
+                            Chia sẻ qua Zalo
                           </div>
                           <div className="text-slate-400 text-xs mt-0.5">
-                            Tự động sao chép nội dung → dán vào chat Zalo
+                            Mở Zalo → chọn người nhận → gửi (nội dung có sẵn)
                           </div>
                         </div>
                         <ExternalLink className="w-4 h-4 ml-auto flex-shrink-0 opacity-40" />
@@ -443,13 +537,12 @@ export default function CustomerForm() {
                     <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
                       <p className="text-xs text-amber-700 leading-relaxed">
                         💡 <strong>Cách 1 (khuyên dùng):</strong> Nhấn
-                        &ldquo;Chia sẻ qua Zalo&rdquo; → Zalo mở ra với nội
-                        dung đơn hàng có sẵn → chọn shop → gửi.
+                        &ldquo;Gửi trực tiếp&rdquo; → Zalo mở chat với quán →
+                        nhấn giữ ô chat → chọn &ldquo;Dán&rdquo; → Gửi.
                         <br />
                         <br />
-                        💡 <strong>Cách 2:</strong> Nhấn &ldquo;Mở chat Zalo
-                        shop&rdquo; → nội dung được sao chép tự động → dán
-                        (paste) vào ô chat Zalo.
+                        💡 <strong>Cách 2:</strong> Nhấn &ldquo;Chia sẻ qua
+                        Zalo&rdquo; → nội dung có sẵn → chọn quán → gửi.
                       </p>
                     </div>
                   </div>
@@ -482,8 +575,11 @@ export default function CustomerForm() {
                     Đã mở Zalo!
                   </h3>
                   <p className="text-slate-500 max-w-xs">
-                    Vui lòng hoàn tất gửi đơn hàng bên Zalo. Cảm ơn bạn đã đặt
-                    hàng!
+                    Nội dung đơn hàng đã được sao chép. Vui lòng dán và gửi
+                    trong Zalo.
+                  </p>
+                  <p className="text-xs text-slate-400 mt-2">
+                    Đơn hàng đã được lưu vào lịch sử
                   </p>
                   <motion.button
                     whileHover={{ scale: 1.05 }}

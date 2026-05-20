@@ -5,6 +5,7 @@ import ProductCard from "@/components/ProductCard";
 import Header from "@/components/Header";
 import CartPanel from "@/components/CartPanel";
 import CustomerForm from "@/components/CustomerForm";
+import OrderHistory from "@/components/OrderHistory";
 import { useCartStore } from "@/store/useCartStore";
 import { formatCurrency } from "@/utils/currency";
 import { motion } from "framer-motion";
@@ -100,6 +101,9 @@ export default function Home() {
 
       {/* Customer Form */}
       <CustomerForm />
+
+      {/* Order History */}
+      <OrderHistory />
 
       {/* Footer */}
       <footer className="py-8 text-center text-sm text-slate-400 border-t border-slate-100 mt-10">

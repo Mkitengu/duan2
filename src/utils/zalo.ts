@@ -13,9 +13,6 @@ export interface OrderItem {
   price: number;
 }
 
-// Shop's Zalo phone number - change this to your shop's number
-export const SHOP_PHONE = "0123456789";
-
 export function generateOrderMessage(
   items: OrderItem[],
   customer: CustomerInfo,
@@ -72,21 +69,27 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 }
 
 /**
- * Open Zalo share dialog with pre-filled message text.
- * This is the most reliable way to send a message via Zalo
- * because it pre-fills the text content in Zalo's share UI.
+ * Open Zalo chat directly with a specific phone number.
+ * Auto-copies the message to clipboard so user just needs to paste.
  */
-export function openZaloShare(message: string): void {
-  const encodedMessage = encodeURIComponent(message);
-  const url = `https://zalo.me/share?text=${encodedMessage}`;
+export async function openZaloDirect(
+  shopPhone: string,
+  message: string
+): Promise<void> {
+  // Copy message to clipboard first
+  await copyToClipboard(message);
+
+  // Open direct chat with the shop phone number
+  const cleanPhone = shopPhone.replace(/\s/g, "");
+  const url = `https://zalo.me/${cleanPhone}`;
   window.open(url, "_blank");
 }
 
 /**
- * Open direct Zalo chat with the shop phone number.
- * User will need to paste the message manually.
+ * Open Zalo share dialog with pre-filled message text.
  */
-export function openZaloChat(): void {
-  const url = `https://zalo.me/${SHOP_PHONE}`;
+export function openZaloShare(message: string): void {
+  const encodedMessage = encodeURIComponent(message);
+  const url = `https://zalo.me/share?text=${encodedMessage}`;
   window.open(url, "_blank");
 }
