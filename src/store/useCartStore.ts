@@ -11,7 +11,7 @@ interface CartStore {
   items: CartItem[];
   isCartOpen: boolean;
   isOrderFormOpen: boolean;
-  addItem: (product: Product) => void;
+  addItem: (product: Product, quantity?: number) => void;
   removeItem: (productId: number) => void;
   updateQuantity: (productId: number, quantity: number) => void;
   clearCart: () => void;
@@ -29,7 +29,7 @@ export const useCartStore = create<CartStore>()(
       isCartOpen: false,
       isOrderFormOpen: false,
 
-      addItem: (product: Product) => {
+      addItem: (product: Product, quantity: number = 1) => {
         set((state) => {
           const existingItem = state.items.find(
             (item) => item.product.id === product.id
@@ -38,12 +38,12 @@ export const useCartStore = create<CartStore>()(
             return {
               items: state.items.map((item) =>
                 item.product.id === product.id
-                  ? { ...item, quantity: item.quantity + 1 }
+                  ? { ...item, quantity: item.quantity + quantity }
                   : item
               ),
             };
           }
-          return { items: [...state.items, { product, quantity: 1 }] };
+          return { items: [...state.items, { product, quantity }] };
         });
       },
 

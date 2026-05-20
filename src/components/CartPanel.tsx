@@ -1,6 +1,6 @@
 "use client";
 
-import { X, Plus, Minus, Trash2, ShoppingBag } from "lucide-react";
+import { X, Plus, Minus, Trash2, ShoppingBag, Sparkles } from "lucide-react";
 import { useCartStore } from "@/store/useCartStore";
 import { formatCurrency } from "@/utils/currency";
 import { motion, AnimatePresence } from "framer-motion";
@@ -93,14 +93,18 @@ export default function CartPanel() {
                       className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:border-teal-200 transition-colors"
                     >
                       {/* Product Image */}
-                      <div className="relative w-16 h-16 rounded-xl overflow-hidden flex-shrink-0">
-                        <Image
-                          src={item.product.image}
-                          alt={item.product.name}
-                          fill
-                          className="object-cover"
-                          sizes="64px"
-                        />
+                      <div className="relative w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 bg-gradient-to-br from-teal-400 to-blue-500 flex items-center justify-center">
+                        {item.product.isCustom ? (
+                          <Sparkles className="w-7 h-7 text-white" />
+                        ) : (
+                          <Image
+                            src={item.product.image}
+                            alt={item.product.name}
+                            fill
+                            className="object-cover"
+                            sizes="64px"
+                          />
+                        )}
                       </div>
 
                       {/* Info */}
