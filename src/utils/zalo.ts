@@ -14,7 +14,7 @@ export interface OrderItem {
 }
 
 // Shop's Zalo phone number - change this to your shop's number
-const SHOP_PHONE = "0123456789";
+export const SHOP_PHONE = "0123456789";
 
 export function generateOrderMessage(
   items: OrderItem[],
@@ -28,10 +28,8 @@ export function generateOrderMessage(
     )
     .join("\n");
 
-  const message = `====================
-ĐƠN ĐẶT NƯỚC
+  const message = `ĐƠN ĐẶT NƯỚC
 ====================
-
 Khách hàng: ${customer.name}
 SĐT: ${customer.phone}
 Địa chỉ: ${customer.address}
@@ -39,34 +37,56 @@ SĐT: ${customer.phone}
 Sản phẩm:
 ${itemLines}
 
-────────────────
 Tổng bill: ${formatCurrency(total)}
-────────────────
-
-${customer.note ? `Ghi chú: ${customer.note}` : ""}
+${customer.note ? `\nGhi chú: ${customer.note}` : ""}
 ====================`;
 
   return message;
 }
 
-export function openZaloOrder(message: string): void {
-  const encodedMessage = encodeURIComponent(message);
-
-  // Try zalo.me/share first for sharing text content
-  const zaloUrl = `https://zalo.me/${SHOP_PHONE}`;
-
-  // Open Zalo with the shop number - user can paste the message
-  // Also copy message to clipboard for easy pasting
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(message).catch(() => {
-      // Fallback: do nothing if clipboard fails
-    });
+/**
+ * Copy message to clipboard
+ * Returns true if successful
+ */
+export async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+    // Fallback for non-secure contexts (HTTP)
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-9999px";
+    textArea.style.top = "-9999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    const success = document.execCommand("copy");
+    document.body.removeChild(textArea);
+    return success;
+  } catch {
+    return false;
   }
-
-  window.open(zaloUrl, "_blank");
 }
 
-export function getZaloShareUrl(message: string): string {
+/**
+ * Open Zalo share dialog with pre-filled message text.
+ * This is the most reliable way to send a message via Zalo
+ * because it pre-fills the text content in Zalo's share UI.
+ */
+export function openZaloShare(message: string): void {
   const encodedMessage = encodeURIComponent(message);
-  return `https://zalo.me/share?text=${encodedMessage}`;
+  const url = `https://zalo.me/share?text=${encodedMessage}`;
+  window.open(url, "_blank");
+}
+
+/**
+ * Open direct Zalo chat with the shop phone number.
+ * User will need to paste the message manually.
+ */
+export function openZaloChat(): void {
+  const url = `https://zalo.me/${SHOP_PHONE}`;
+  window.open(url, "_blank");
 }

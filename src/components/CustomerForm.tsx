@@ -1,16 +1,31 @@
 "use client";
 
 import { useState } from "react";
-import { X, Send, User, Phone, MapPin, MessageSquare } from "lucide-react";
+import {
+  X,
+  Send,
+  User,
+  Phone,
+  MapPin,
+  MessageSquare,
+  Copy,
+  Check,
+  ExternalLink,
+  ArrowLeft,
+  MessageCircle,
+} from "lucide-react";
 import { useCartStore } from "@/store/useCartStore";
 import { formatCurrency } from "@/utils/currency";
 import {
   generateOrderMessage,
-  openZaloOrder,
-  getZaloShareUrl,
+  openZaloShare,
+  openZaloChat,
+  copyToClipboard,
   CustomerInfo,
 } from "@/utils/zalo";
 import { motion, AnimatePresence } from "framer-motion";
+
+type FormStep = "info" | "preview" | "success";
 
 export default function CustomerForm() {
   const { items, isOrderFormOpen, setOrderFormOpen, calculateTotal, clearCart } =
@@ -25,7 +40,9 @@ export default function CustomerForm() {
   });
 
   const [errors, setErrors] = useState<Partial<CustomerInfo>>({});
-  const [orderSent, setOrderSent] = useState(false);
+  const [step, setStep] = useState<FormStep>("info");
+  const [orderMessage, setOrderMessage] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const validateForm = (): boolean => {
     const newErrors: Partial<CustomerInfo> = {};
@@ -48,7 +65,7 @@ export default function CustomerForm() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = () => {
+  const handleContinue = () => {
     if (!validateForm()) return;
 
     const orderItems = items.map((item) => ({
@@ -58,21 +75,50 @@ export default function CustomerForm() {
     }));
 
     const message = generateOrderMessage(orderItems, customer, total);
+    setOrderMessage(message);
+    setStep("preview");
+  };
 
-    // Open Zalo with order message
-    openZaloOrder(message);
+  const handleCopy = async () => {
+    const success = await copyToClipboard(orderMessage);
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
-    // Also try the share URL as a fallback
-    const shareUrl = getZaloShareUrl(message);
-
-    setOrderSent(true);
-
+  const handleZaloShare = () => {
+    openZaloShare(orderMessage);
+    setStep("success");
     setTimeout(() => {
-      setOrderSent(false);
-      setOrderFormOpen(false);
-      clearCart();
-      setCustomer({ name: "", phone: "", address: "", note: "" });
+      handleClose();
     }, 3000);
+  };
+
+  const handleZaloChat = async () => {
+    await copyToClipboard(orderMessage);
+    setCopied(true);
+    openZaloChat();
+    setStep("success");
+    setTimeout(() => {
+      handleClose();
+    }, 3000);
+  };
+
+  const handleClose = () => {
+    setStep("info");
+    setOrderFormOpen(false);
+    clearCart();
+    setCustomer({ name: "", phone: "", address: "", note: "" });
+    setCopied(false);
+    setOrderMessage("");
+  };
+
+  const handleDismiss = () => {
+    setStep("info");
+    setOrderFormOpen(false);
+    setCopied(false);
+    setOrderMessage("");
   };
 
   const inputFields = [
@@ -119,7 +165,7 @@ export default function CustomerForm() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setOrderFormOpen(false)}
+            onClick={handleDismiss}
             className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50"
           />
 
@@ -132,45 +178,13 @@ export default function CustomerForm() {
             className="fixed inset-4 sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-[480px] sm:max-h-[90vh] bg-white rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden"
           >
             <AnimatePresence mode="wait">
-              {orderSent ? (
-                /* Success State */
-                <motion.div
-                  key="success"
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  className="flex flex-col items-center justify-center p-10 text-center h-full min-h-[400px]"
-                >
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{
-                      type: "spring",
-                      damping: 10,
-                      stiffness: 200,
-                      delay: 0.1,
-                    }}
-                    className="w-24 h-24 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center mb-6 shadow-lg shadow-green-500/30"
-                  >
-                    <Send className="w-10 h-10 text-white" />
-                  </motion.div>
-                  <h3 className="text-2xl font-bold text-slate-800 mb-2">
-                    Đã gửi đơn hàng!
-                  </h3>
-                  <p className="text-slate-500">
-                    Đơn hàng đã được gửi qua Zalo. Cảm ơn bạn!
-                  </p>
-                  <p className="text-xs text-slate-400 mt-3">
-                    Nội dung đã được sao chép vào clipboard
-                  </p>
-                </motion.div>
-              ) : (
-                /* Form State */
+              {/* ========== STEP 1: Customer Info ========== */}
+              {step === "info" && (
                 <motion.div
                   key="form"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
                   className="flex flex-col h-full"
                 >
                   {/* Header */}
@@ -186,7 +200,7 @@ export default function CustomerForm() {
                     <motion.button
                       whileHover={{ scale: 1.1 }}
                       whileTap={{ scale: 0.9 }}
-                      onClick={() => setOrderFormOpen(false)}
+                      onClick={handleDismiss}
                       className="p-2 rounded-xl hover:bg-slate-100 transition-colors"
                     >
                       <X className="w-5 h-5 text-slate-500" />
@@ -214,7 +228,10 @@ export default function CustomerForm() {
                                 [field.key]: e.target.value,
                               });
                               if (errors[field.key]) {
-                                setErrors({ ...errors, [field.key]: undefined });
+                                setErrors({
+                                  ...errors,
+                                  [field.key]: undefined,
+                                });
                               }
                             }}
                             placeholder={field.placeholder}
@@ -275,21 +292,207 @@ export default function CustomerForm() {
                     </div>
                   </div>
 
-                  {/* Submit Button */}
+                  {/* Continue Button */}
                   <div className="p-5 border-t border-slate-100">
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
-                      onClick={handleSubmit}
+                      onClick={handleContinue}
                       className="w-full py-4 rounded-2xl bg-gradient-to-r from-blue-500 to-teal-500 text-white font-bold text-base shadow-lg shadow-teal-500/25 hover:shadow-teal-500/40 transition-all flex items-center justify-center gap-2"
                     >
                       <Send className="w-5 h-5" />
-                      Đặt hàng qua Zalo
+                      Tiếp tục
                     </motion.button>
-                    <p className="text-center text-xs text-slate-400 mt-2">
-                      Đơn hàng sẽ được gửi qua tin nhắn Zalo
-                    </p>
                   </div>
+                </motion.div>
+              )}
+
+              {/* ========== STEP 2: Preview & Send via Zalo ========== */}
+              {step === "preview" && (
+                <motion.div
+                  key="preview"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  className="flex flex-col h-full"
+                >
+                  {/* Header */}
+                  <div className="flex items-center justify-between p-5 border-b border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => setStep("info")}
+                        className="p-2 rounded-xl hover:bg-slate-100 transition-colors"
+                      >
+                        <ArrowLeft className="w-5 h-5 text-slate-500" />
+                      </motion.button>
+                      <div>
+                        <h2 className="text-lg font-bold text-slate-800">
+                          Gửi qua Zalo
+                        </h2>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          Chọn cách gửi đơn hàng
+                        </p>
+                      </div>
+                    </div>
+                    <motion.button
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={handleDismiss}
+                      className="p-2 rounded-xl hover:bg-slate-100 transition-colors"
+                    >
+                      <X className="w-5 h-5 text-slate-500" />
+                    </motion.button>
+                  </div>
+
+                  {/* Message Preview */}
+                  <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                    {/* Preview Box */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium text-slate-700">
+                          Nội dung đơn hàng
+                        </label>
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={handleCopy}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
+                            copied
+                              ? "bg-green-100 text-green-700"
+                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          }`}
+                        >
+                          {copied ? (
+                            <>
+                              <Check className="w-3.5 h-3.5" />
+                              Đã sao chép!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              Sao chép
+                            </>
+                          )}
+                        </motion.button>
+                      </div>
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-48 overflow-y-auto">
+                        <pre className="text-xs text-slate-700 whitespace-pre-wrap font-mono leading-relaxed">
+                          {orderMessage}
+                        </pre>
+                      </div>
+                    </div>
+
+                    {/* Zalo Buttons */}
+                    <div className="space-y-3">
+                      {/* Option 1: Share via Zalo (Recommended) */}
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleZaloShare}
+                        className="w-full py-4 px-5 rounded-2xl bg-[#0068FF] text-white font-bold text-sm shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all flex items-center gap-4"
+                      >
+                        <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                          <Send className="w-5 h-5" />
+                        </div>
+                        <div className="text-left">
+                          <div className="font-bold text-base">
+                            Chia sẻ qua Zalo
+                          </div>
+                          <div className="text-blue-200 text-xs mt-0.5">
+                            Mở Zalo → chọn shop → gửi tin nhắn (nội dung có
+                            sẵn)
+                          </div>
+                        </div>
+                        <ExternalLink className="w-4 h-4 ml-auto flex-shrink-0 opacity-60" />
+                      </motion.button>
+
+                      {/* Divider */}
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 h-px bg-slate-200" />
+                        <span className="text-xs text-slate-400 font-medium">
+                          hoặc
+                        </span>
+                        <div className="flex-1 h-px bg-slate-200" />
+                      </div>
+
+                      {/* Option 2: Open Direct Chat */}
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleZaloChat}
+                        className="w-full py-4 px-5 rounded-2xl bg-white border-2 border-slate-200 text-slate-700 font-bold text-sm hover:border-blue-300 hover:bg-blue-50/50 transition-all flex items-center gap-4"
+                      >
+                        <div className="w-11 h-11 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
+                          <MessageCircle className="w-5 h-5 text-slate-500" />
+                        </div>
+                        <div className="text-left">
+                          <div className="font-bold text-base">
+                            Mở chat Zalo shop
+                          </div>
+                          <div className="text-slate-400 text-xs mt-0.5">
+                            Tự động sao chép nội dung → dán vào chat Zalo
+                          </div>
+                        </div>
+                        <ExternalLink className="w-4 h-4 ml-auto flex-shrink-0 opacity-40" />
+                      </motion.button>
+                    </div>
+
+                    {/* Help note */}
+                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                      <p className="text-xs text-amber-700 leading-relaxed">
+                        💡 <strong>Cách 1 (khuyên dùng):</strong> Nhấn
+                        &ldquo;Chia sẻ qua Zalo&rdquo; → Zalo mở ra với nội
+                        dung đơn hàng có sẵn → chọn shop → gửi.
+                        <br />
+                        <br />
+                        💡 <strong>Cách 2:</strong> Nhấn &ldquo;Mở chat Zalo
+                        shop&rdquo; → nội dung được sao chép tự động → dán
+                        (paste) vào ô chat Zalo.
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* ========== STEP 3: Success ========== */}
+              {step === "success" && (
+                <motion.div
+                  key="success"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  className="flex flex-col items-center justify-center p-10 text-center h-full min-h-[400px]"
+                >
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{
+                      type: "spring",
+                      damping: 10,
+                      stiffness: 200,
+                      delay: 0.1,
+                    }}
+                    className="w-24 h-24 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center mb-6 shadow-lg shadow-green-500/30"
+                  >
+                    <Check className="w-10 h-10 text-white" />
+                  </motion.div>
+                  <h3 className="text-2xl font-bold text-slate-800 mb-2">
+                    Đã mở Zalo!
+                  </h3>
+                  <p className="text-slate-500 max-w-xs">
+                    Vui lòng hoàn tất gửi đơn hàng bên Zalo. Cảm ơn bạn đã đặt
+                    hàng!
+                  </p>
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleClose}
+                    className="mt-6 px-6 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-sm font-medium hover:bg-slate-200 transition-colors"
+                  >
+                    Đóng
+                  </motion.button>
                 </motion.div>
               )}
             </AnimatePresence>
