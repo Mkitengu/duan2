@@ -14,7 +14,7 @@ interface ProductCardProps {
 }
 
 export default function ProductCard({ product, index }: ProductCardProps) {
-  const { addItem, items } = useCartStore();
+  const { setActiveCheckout } = useCartStore();
   const [justAdded, setJustAdded] = useState(false);
 
   // States for Custom Drink modal
@@ -23,24 +23,20 @@ export default function ProductCard({ product, index }: ProductCardProps) {
   const [customPrice, setCustomPrice] = useState<number>(15000);
   const [customQty, setCustomQty] = useState(1);
 
-  // Find how many items of this base product are in the cart
-  const cartItem = items.find((item) => item.product.id === product.id);
-  const quantityInCart = cartItem?.quantity || 0;
-
   const handleAddToCartClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (product.isCustom) {
       setIsModalOpen(true);
     } else {
-      addItem(product);
-      setJustAdded(true);
-      setTimeout(() => setJustAdded(false), 1200);
+      setActiveCheckout(product, 1);
     }
   };
 
   const handleCardClick = () => {
     if (product.isCustom) {
       setIsModalOpen(true);
+    } else {
+      setActiveCheckout(product, 1);
     }
   };
 
@@ -58,17 +54,13 @@ export default function ProductCard({ product, index }: ProductCardProps) {
       isCustom: true,
     };
 
-    addItem(newCustomProduct, customQty);
     setIsModalOpen(false);
+    setActiveCheckout(newCustomProduct, customQty);
     
     // Reset form
     setCustomName("");
     setCustomPrice(15000);
     setCustomQty(1);
-
-    // Show visual confirmation on the card
-    setJustAdded(true);
-    setTimeout(() => setJustAdded(false), 1500);
   };
 
   return (
@@ -114,21 +106,6 @@ export default function ProductCard({ product, index }: ProductCardProps) {
             </span>
           </div>
 
-          {/* Quantity badge (Only for regular items) */}
-          <AnimatePresence>
-            {!product.isCustom && quantityInCart > 0 && (
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                exit={{ scale: 0 }}
-                className="absolute top-3 right-3"
-              >
-                <span className="w-7 h-7 rounded-full bg-gradient-to-br from-orange-400 to-red-500 text-white text-xs font-bold flex items-center justify-center shadow-lg">
-                  {quantityInCart}
-                </span>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
 
         {/* Content */}
@@ -333,7 +310,7 @@ export default function ProductCard({ product, index }: ProductCardProps) {
                     type="submit"
                     className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-teal-500 to-blue-500 text-white font-bold text-sm shadow-lg shadow-teal-500/25 hover:shadow-teal-500/40 transition-all"
                   >
-                    Thêm vào giỏ
+                    Chọn món này
                   </button>
                 </div>
               </form>

@@ -9,6 +9,9 @@ export interface CartItem {
 
 interface CartStore {
   items: CartItem[];
+  activeCheckoutProduct: Product | null;
+  activeCheckoutQty: number;
+  setActiveCheckout: (product: Product | null, quantity?: number) => void;
   isCartOpen: boolean;
   isOrderFormOpen: boolean;
   addItem: (product: Product, quantity?: number) => void;
@@ -26,6 +29,10 @@ export const useCartStore = create<CartStore>()(
   persist(
     (set, get) => ({
       items: [],
+      activeCheckoutProduct: null,
+      activeCheckoutQty: 1,
+      setActiveCheckout: (product, quantity = 1) =>
+        set({ activeCheckoutProduct: product, activeCheckoutQty: quantity }),
       isCartOpen: false,
       isOrderFormOpen: false,
 

@@ -23,13 +23,12 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { customer, items, total } = body;
 
-    // Validate request body
-    if (!customer || !customer.name || !customer.phone || !customer.address) {
-      return NextResponse.json(
-        { error: "Missing required customer information" },
-        { status: 400 }
-      );
-    }
+    const cleanCustomer = {
+      name: customer?.name?.trim() || "Khách hàng",
+      phone: customer?.phone?.trim() || "Không cung cấp SĐT",
+      address: customer?.address?.trim() || "Tại quán / bàn",
+      note: customer?.note?.trim() || "",
+    };
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
@@ -39,7 +38,7 @@ export async function POST(request: Request) {
     }
 
     const savedOrder = await saveOrder({
-      customer,
+      customer: cleanCustomer,
       items,
       total,
     });

@@ -3,18 +3,12 @@
 import { products } from "@/data/products";
 import ProductCard from "@/components/ProductCard";
 import Header from "@/components/Header";
-import CartPanel from "@/components/CartPanel";
 import CustomerForm from "@/components/CustomerForm";
 import OrderHistory from "@/components/OrderHistory";
-import { useCartStore } from "@/store/useCartStore";
-import { formatCurrency } from "@/utils/currency";
 import { motion } from "framer-motion";
-import { ShoppingCart, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 export default function Home() {
-  const { items, calculateTotal, setCartOpen, itemCount } = useCartStore();
-  const total = calculateTotal();
-  const count = itemCount();
 
   return (
     <div className="min-h-screen">
@@ -67,39 +61,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Floating Cart Button (Mobile) */}
-      {count > 0 && (
-        <motion.div
-          initial={{ y: 100 }}
-          animate={{ y: 0 }}
-          className="fixed bottom-4 left-4 right-4 sm:bottom-6 sm:left-auto sm:right-6 sm:w-auto z-40"
-        >
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setCartOpen(true)}
-            className="w-full sm:w-auto flex items-center justify-between sm:justify-center gap-4 px-6 py-4 rounded-2xl bg-gradient-to-r from-teal-500 to-blue-500 text-white shadow-2xl shadow-teal-500/30 hover:shadow-teal-500/50 transition-all"
-          >
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <ShoppingCart className="w-5 h-5" />
-                <span className="absolute -top-2 -right-2 w-5 h-5 bg-orange-400 text-[10px] font-bold rounded-full flex items-center justify-center">
-                  {count}
-                </span>
-              </div>
-              <span className="font-bold text-sm">Giỏ hàng</span>
-            </div>
-            <span className="font-bold text-base">
-              {formatCurrency(total)}
-            </span>
-          </motion.button>
-        </motion.div>
-      )}
-
-      {/* Cart Panel */}
-      <CartPanel />
-
-      {/* Customer Form */}
+      {/* Customer Form (InstantOrderModal) */}
       <CustomerForm />
 
       {/* Order History */}
@@ -108,8 +70,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="py-8 text-center text-sm text-slate-400 border-t border-slate-100 mt-10">
         <p>
-          © 2026 AquaOrder. Đặt hàng nhanh qua{" "}
-          <span className="text-blue-500 font-medium">Zalo</span>
+          © 2026 AquaOrder. Đặt hàng nhanh chóng và tiện lợi
         </p>
         <p className="mt-2">
           <a
