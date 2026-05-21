@@ -7,12 +7,51 @@ import CustomerForm from "@/components/CustomerForm";
 import OrderHistory from "@/components/OrderHistory";
 import { motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
+import ConfirmOrderModal from "@/components/ConfirmOrderModal";
+import { useCartStore } from "@/store/useCartStore";
 
 export default function Home() {
+  const { activeCheckoutProduct, activeCheckoutQty, setActiveCheckout, clearCart } = useCartStore();
 
   return (
     <div className="min-h-screen">
       <Header />
+
+      <ConfirmOrderModal
+        isOpen={!!activeCheckoutProduct}
+        product={activeCheckoutProduct}
+        quantity={activeCheckoutQty}
+        onClose={() => {
+          setActiveCheckout(null);
+        }}
+        onConfirm={async () => {
+          // Build order payload
+          const order = {
+            customer: {
+              name: "Khách hàng",
+              phone: "0815633162",
+              address: "Tại quán / bàn",
+              note: "",
+            },
+            items: activeCheckoutProduct ? [{ product: activeCheckoutProduct, quantity: activeCheckoutQty }] : [],
+            total: activeCheckoutProduct ? activeCheckoutProduct.price * activeCheckoutQty : 0,
+          };
+          try {
+            const res = await fetch("/api/orders", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(order),
+            });
+            if (!res.ok) throw new Error("Failed to submit order");
+            // reset checkout state
+            setActiveCheckout(null);
+            clearCart();
+          } catch (e) {
+            console.error(e);
+            alert("❌ Không thể gửi đơn hàng. Vui lòng thử lại!");
+          }
+        }}
+      />
 
       {/* Hero Section */}
       <section className="relative overflow-hidden py-12 sm:py-16 lg:py-20">
