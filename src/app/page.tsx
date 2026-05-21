@@ -111,6 +111,14 @@ export default function Home() {
           © 2026 AquaOrder. Đặt hàng nhanh qua{" "}
           <span className="text-blue-500 font-medium">Zalo</span>
         </p>
+        <p className="mt-2">
+          <a
+            href="/admin"
+            className="text-xs text-slate-300 hover:text-teal-500 hover:underline transition-colors"
+          >
+            Quản trị viên
+          </a>
+        </p>
       </footer>
     </div>
   );

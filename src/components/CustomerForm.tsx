@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   X,
   Send,
@@ -8,28 +8,18 @@ import {
   Phone,
   MapPin,
   MessageSquare,
-  Copy,
   Check,
-  ExternalLink,
   ArrowLeft,
-  MessageCircle,
-  Store,
+  Loader2,
+  Package,
 } from "lucide-react";
 import { useCartStore } from "@/store/useCartStore";
 import { useOrderHistoryStore } from "@/store/useOrderHistoryStore";
 import { formatCurrency } from "@/utils/currency";
-import {
-  generateOrderMessage,
-  openZaloShare,
-  openZaloDirect,
-  copyToClipboard,
-  CustomerInfo,
-} from "@/utils/zalo";
+import { CustomerInfo } from "@/utils/zalo";
 import { motion, AnimatePresence } from "framer-motion";
 
 type FormStep = "info" | "preview" | "success";
-
-const SHOP_PHONE_KEY = "water-order-shop-phone";
 
 export default function CustomerForm() {
   const { items, isOrderFormOpen, setOrderFormOpen, calculateTotal, clearCart } =
@@ -43,25 +33,11 @@ export default function CustomerForm() {
     address: "",
     note: "",
   });
-  const [shopPhone, setShopPhone] = useState("");
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [step, setStep] = useState<FormStep>("info");
-  const [orderMessage, setOrderMessage] = useState("");
-  const [copied, setCopied] = useState(false);
-
-  // Load saved shop phone from localStorage
-  useEffect(() => {
-    const savedPhone = localStorage.getItem(SHOP_PHONE_KEY);
-    if (savedPhone) setShopPhone(savedPhone);
-  }, []);
-
-  // Save shop phone when changed
-  useEffect(() => {
-    if (shopPhone.trim()) {
-      localStorage.setItem(SHOP_PHONE_KEY, shopPhone.trim());
-    }
-  }, [shopPhone]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [apiError, setApiError] = useState("");
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -80,18 +56,18 @@ export default function CustomerForm() {
       newErrors.address = "Vui lòng nhập địa chỉ";
     }
 
-    if (!shopPhone.trim()) {
-      newErrors.shopPhone = "Vui lòng nhập SĐT Zalo quán";
-    } else if (!/^(0|\+84)[0-9]{9,10}$/.test(shopPhone.trim())) {
-      newErrors.shopPhone = "Số điện thoại quán không hợp lệ";
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleContinue = () => {
     if (!validateForm()) return;
+    setStep("preview");
+  };
+
+  const handleSubmitOrder = async () => {
+    setIsSubmitting(true);
+    setApiError("");
 
     const orderItems = items.map((item) => ({
       name: item.product.name,
@@ -99,44 +75,43 @@ export default function CustomerForm() {
       price: item.product.price,
     }));
 
-    const message = generateOrderMessage(orderItems, customer, total);
-    setOrderMessage(message);
-    setStep("preview");
-  };
+    try {
+      const response = await fetch("/api/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customer,
+          items: orderItems,
+          total,
+        }),
+      });
 
-  const handleCopy = async () => {
-    const success = await copyToClipboard(orderMessage);
-    if (success) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (!response.ok) {
+        throw new Error("Không thể gửi đơn hàng. Vui lòng thử lại!");
+      }
+
+      // Add to customer's local history for tracking
+      addOrder({
+        customer,
+        shopPhone: "0815633162", // Default shop phone
+        items: items.map((item) => ({
+          productName: item.product.name,
+          quantity: item.quantity,
+          price: item.product.price,
+        })),
+        total,
+        message: "",
+        status: "pending",
+      });
+
+      setStep("success");
+    } catch (err: any) {
+      setApiError(err.message || "Đã xảy ra lỗi kết nối!");
+    } finally {
+      setIsSubmitting(false);
     }
-  };
-
-  const saveOrder = (status: "sent" | "pending") => {
-    addOrder({
-      customer,
-      shopPhone: shopPhone.trim(),
-      items: items.map((item) => ({
-        productName: item.product.name,
-        quantity: item.quantity,
-        price: item.product.price,
-      })),
-      total,
-      message: orderMessage,
-      status,
-    });
-  };
-
-  const handleZaloDirect = async () => {
-    saveOrder("sent");
-    await openZaloDirect(shopPhone.trim(), orderMessage);
-    setStep("success");
-  };
-
-  const handleZaloShare = () => {
-    saveOrder("sent");
-    openZaloShare(orderMessage);
-    setStep("success");
   };
 
   const handleClose = () => {
@@ -144,15 +119,14 @@ export default function CustomerForm() {
     setOrderFormOpen(false);
     clearCart();
     setCustomer({ name: "", phone: "", address: "", note: "" });
-    setCopied(false);
-    setOrderMessage("");
+    setApiError("");
   };
 
   const handleDismiss = () => {
+    if (isSubmitting) return; // Prevent dismissal during submission
     setStep("info");
     setOrderFormOpen(false);
-    setCopied(false);
-    setOrderMessage("");
+    setApiError("");
   };
 
   const inputFields = [
@@ -163,7 +137,6 @@ export default function CustomerForm() {
       placeholder: "Nguyễn Văn A",
       type: "text",
       required: true,
-      isCustomer: true,
     },
     {
       key: "phone",
@@ -172,7 +145,6 @@ export default function CustomerForm() {
       placeholder: "0912345678",
       type: "tel",
       required: true,
-      isCustomer: true,
     },
     {
       key: "address",
@@ -181,16 +153,14 @@ export default function CustomerForm() {
       placeholder: "123 Đường ABC, Quận 1, TP.HCM",
       type: "text",
       required: true,
-      isCustomer: true,
     },
     {
       key: "note",
-      label: "Ghi chú",
+      label: "Ghi chú (nếu có)",
       icon: MessageSquare,
-      placeholder: "Ít đá, thêm đường...",
+      placeholder: "Ví dụ: Ít đá, thêm đường, mang ống hút...",
       type: "text",
       required: false,
-      isCustomer: true,
     },
   ];
 
@@ -204,35 +174,35 @@ export default function CustomerForm() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={handleDismiss}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50"
+            className="fixed inset-0 bg-black/45 backdrop-blur-sm z-50"
           />
 
-          {/* Modal */}
+          {/* Modal Container */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            initial={{ opacity: 0, scale: 0.93, y: 15 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="fixed inset-4 sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-[480px] sm:max-h-[90vh] bg-white rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden"
+            exit={{ opacity: 0, scale: 0.93, y: 15 }}
+            transition={{ type: "spring", damping: 26, stiffness: 320 }}
+            className="fixed inset-4 sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-[480px] sm:max-h-[90vh] bg-white rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden border border-slate-100"
           >
             <AnimatePresence mode="wait">
-              {/* ========== STEP 1: Customer Info ========== */}
+              {/* ========== STEP 1: Customer Form ========== */}
               {step === "info" && (
                 <motion.div
                   key="form"
-                  initial={{ opacity: 0, x: -20 }}
+                  initial={{ opacity: 0, x: -15 }}
                   animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
+                  exit={{ opacity: 0, x: -15 }}
                   className="flex flex-col h-full"
                 >
                   {/* Header */}
                   <div className="flex items-center justify-between p-5 border-b border-slate-100">
                     <div>
                       <h2 className="text-lg font-bold text-slate-800">
-                        Thông tin đặt hàng
+                        Thông tin giao hàng
                       </h2>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        Điền thông tin giao hàng & SĐT Zalo quán
+                        Điền thông tin của bạn để quán lập hóa đơn
                       </p>
                     </div>
                     <motion.button
@@ -245,75 +215,21 @@ export default function CustomerForm() {
                     </motion.button>
                   </div>
 
-                  {/* Form */}
+                  {/* Inputs */}
                   <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                    {/* Shop Phone - Highlighted */}
-                    <div className="bg-gradient-to-r from-blue-50 to-teal-50 rounded-2xl p-4 border border-blue-200">
-                      <label className="block text-sm font-bold text-blue-800 mb-1.5">
-                        <span className="flex items-center gap-1.5">
-                          <Store className="w-4 h-4" />
-                          SĐT Zalo quán nhận đơn
-                          <span className="text-red-400">*</span>
-                        </span>
-                      </label>
-                      <p className="text-xs text-blue-500 mb-2">
-                        Đơn hàng sẽ được gửi trực tiếp đến Zalo số này
-                      </p>
-                      <div className="relative">
-                        <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-400" />
-                        <input
-                          type="tel"
-                          value={shopPhone}
-                          onChange={(e) => {
-                            setShopPhone(e.target.value);
-                            if (errors.shopPhone) {
-                              setErrors({ ...errors, shopPhone: "" });
-                            }
-                          }}
-                          placeholder="0901234567"
-                          className={`w-full pl-11 pr-4 py-3 rounded-xl border ${
-                            errors.shopPhone
-                              ? "border-red-300 bg-red-50/50"
-                              : "border-blue-200 bg-white"
-                          } focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all text-sm text-slate-800 placeholder:text-slate-300 font-medium`}
-                        />
-                      </div>
-                      {errors.shopPhone && (
-                        <motion.p
-                          initial={{ opacity: 0, y: -5 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="text-xs text-red-500 mt-1 ml-1"
-                        >
-                          {errors.shopPhone}
-                        </motion.p>
-                      )}
-                    </div>
-
-                    {/* Divider */}
-                    <div className="flex items-center gap-3 pt-1">
-                      <div className="flex-1 h-px bg-slate-200" />
-                      <span className="text-xs text-slate-400 font-medium">
-                        Thông tin khách hàng
-                      </span>
-                      <div className="flex-1 h-px bg-slate-200" />
-                    </div>
-
-                    {/* Customer fields */}
                     {inputFields.map((field) => (
                       <div key={field.key}>
-                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                           {field.label}
                           {field.required && (
                             <span className="text-red-400 ml-1">*</span>
                           )}
                         </label>
                         <div className="relative">
-                          <field.icon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <field.icon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400" />
                           <input
                             type={field.type}
-                            value={
-                              customer[field.key as keyof CustomerInfo]
-                            }
+                            value={customer[field.key as keyof CustomerInfo]}
                             onChange={(e) => {
                               setCustomer({
                                 ...customer,
@@ -329,14 +245,14 @@ export default function CustomerForm() {
                             placeholder={field.placeholder}
                             className={`w-full pl-11 pr-4 py-3 rounded-2xl border ${
                               errors[field.key]
-                                ? "border-red-300 bg-red-50/50"
-                                : "border-slate-200 bg-slate-50"
-                            } focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400 transition-all text-sm text-slate-800 placeholder:text-slate-300`}
+                                ? "border-red-300 bg-red-50/30"
+                                : "border-slate-200 bg-slate-50/50 hover:bg-slate-50"
+                            } focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all text-sm text-slate-800 placeholder:text-slate-300 font-medium`}
                           />
                         </div>
                         {errors[field.key] && (
                           <motion.p
-                            initial={{ opacity: 0, y: -5 }}
+                            initial={{ opacity: 0, y: -4 }}
                             animate={{ opacity: 1, y: 0 }}
                             className="text-xs text-red-500 mt-1 ml-1"
                           >
@@ -346,10 +262,10 @@ export default function CustomerForm() {
                       </div>
                     ))}
 
-                    {/* Order Summary */}
+                    {/* Quick Bill Preview */}
                     <div className="bg-gradient-to-br from-slate-50 to-teal-50/30 rounded-2xl p-4 border border-slate-100 mt-4">
-                      <h3 className="text-sm font-bold text-slate-700 mb-3">
-                        Tóm tắt đơn hàng
+                      <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+                        Tóm tắt đồ uống
                       </h3>
                       <div className="space-y-2">
                         {items.map((item) => (
@@ -357,25 +273,25 @@ export default function CustomerForm() {
                             key={item.product.id}
                             className="flex justify-between text-sm"
                           >
-                            <span className="text-slate-500">
+                            <span className="text-slate-600 font-medium">
                               {item.product.name}{" "}
-                              <span className="text-slate-400">
+                              <span className="text-slate-400 font-normal">
                                 x{item.quantity}
                               </span>
                             </span>
-                            <span className="font-medium text-slate-700">
+                            <span className="font-semibold text-slate-700">
                               {formatCurrency(
                                 item.product.price * item.quantity
                               )}
                             </span>
                           </div>
                         ))}
-                        <div className="border-t border-dashed border-slate-300 pt-2 mt-2">
-                          <div className="flex justify-between">
-                            <span className="font-bold text-slate-700">
+                        <div className="border-t border-dashed border-slate-200 pt-2.5 mt-2">
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-slate-700 text-sm">
                               Tổng cộng:
                             </span>
-                            <span className="text-lg font-bold bg-gradient-to-r from-teal-600 to-blue-600 bg-clip-text text-transparent">
+                            <span className="text-base font-extrabold bg-gradient-to-r from-teal-600 to-blue-600 bg-clip-text text-transparent">
                               {formatCurrency(total)}
                             </span>
                           </div>
@@ -384,50 +300,48 @@ export default function CustomerForm() {
                     </div>
                   </div>
 
-                  {/* Continue Button */}
-                  <div className="p-5 border-t border-slate-100">
+                  {/* Footer */}
+                  <div className="p-5 border-t border-slate-100 bg-white">
                     <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
+                      whileHover={{ scale: 1.01 }}
+                      whileTap={{ scale: 0.99 }}
                       onClick={handleContinue}
-                      className="w-full py-4 rounded-2xl bg-gradient-to-r from-blue-500 to-teal-500 text-white font-bold text-base shadow-lg shadow-teal-500/25 hover:shadow-teal-500/40 transition-all flex items-center justify-center gap-2"
+                      className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-teal-500 to-blue-500 text-white font-bold text-base shadow-lg shadow-teal-500/20 hover:shadow-teal-500/35 transition-all flex items-center justify-center gap-2"
                     >
-                      <Send className="w-5 h-5" />
+                      <Send className="w-4 h-4" />
                       Tiếp tục
                     </motion.button>
                   </div>
                 </motion.div>
               )}
 
-              {/* ========== STEP 2: Preview & Send via Zalo ========== */}
+              {/* ========== STEP 2: Review & Submit ========== */}
               {step === "preview" && (
                 <motion.div
                   key="preview"
-                  initial={{ opacity: 0, x: 20 }}
+                  initial={{ opacity: 0, x: 15 }}
                   animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
+                  exit={{ opacity: 0, x: 15 }}
                   className="flex flex-col h-full"
                 >
                   {/* Header */}
                   <div className="flex items-center justify-between p-5 border-b border-slate-100">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <motion.button
                         whileHover={{ scale: 1.1 }}
                         whileTap={{ scale: 0.9 }}
                         onClick={() => setStep("info")}
                         className="p-2 rounded-xl hover:bg-slate-100 transition-colors"
+                        disabled={isSubmitting}
                       >
                         <ArrowLeft className="w-5 h-5 text-slate-500" />
                       </motion.button>
                       <div>
                         <h2 className="text-lg font-bold text-slate-800">
-                          Gửi qua Zalo
+                          Xác nhận đơn hàng
                         </h2>
                         <p className="text-xs text-slate-400 mt-0.5">
-                          Gửi đến Zalo:{" "}
-                          <span className="font-semibold text-blue-500">
-                            {shopPhone}
-                          </span>
+                          Kiểm tra thông tin trước khi gửi đi
                         </p>
                       </div>
                     </div>
@@ -436,158 +350,173 @@ export default function CustomerForm() {
                       whileTap={{ scale: 0.9 }}
                       onClick={handleDismiss}
                       className="p-2 rounded-xl hover:bg-slate-100 transition-colors"
+                      disabled={isSubmitting}
                     >
                       <X className="w-5 h-5 text-slate-500" />
                     </motion.button>
                   </div>
 
-                  {/* Message Preview */}
+                  {/* Review Content */}
                   <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                    {/* Preview Box */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <label className="text-sm font-medium text-slate-700">
-                          Nội dung đơn hàng
-                        </label>
-                        <motion.button
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={handleCopy}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
-                            copied
-                              ? "bg-green-100 text-green-700"
-                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                          }`}
-                        >
-                          {copied ? (
-                            <>
-                              <Check className="w-3.5 h-3.5" />
-                              Đã sao chép!
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3.5 h-3.5" />
-                              Sao chép
-                            </>
-                          )}
-                        </motion.button>
+                    {/* Customer Info Card */}
+                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-2.5">
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        Thông tin giao hàng
+                      </h3>
+                      <div className="flex items-start gap-2.5 text-sm">
+                        <User className="w-4 h-4 text-slate-400 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-slate-700">
+                            {customer.name}
+                          </p>
+                          <p className="text-xs text-slate-500">Người nhận</p>
+                        </div>
                       </div>
-                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-48 overflow-y-auto">
-                        <pre className="text-xs text-slate-700 whitespace-pre-wrap font-mono leading-relaxed">
-                          {orderMessage}
-                        </pre>
+                      <div className="flex items-start gap-2.5 text-sm">
+                        <Phone className="w-4 h-4 text-slate-400 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-slate-700">
+                            {customer.phone}
+                          </p>
+                          <p className="text-xs text-slate-500">Số điện thoại</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2.5 text-sm">
+                        <MapPin className="w-4 h-4 text-slate-400 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-slate-700 leading-relaxed">
+                            {customer.address}
+                          </p>
+                          <p className="text-xs text-slate-500">Địa chỉ giao hàng</p>
+                        </div>
+                      </div>
+                      {customer.note && (
+                        <div className="flex items-start gap-2.5 text-sm border-t border-slate-200/50 pt-2 mt-2">
+                          <MessageSquare className="w-4 h-4 text-slate-400 mt-0.5" />
+                          <div>
+                            <p className="font-medium text-slate-600 italic">
+                              &ldquo;{customer.note}&rdquo;
+                            </p>
+                            <p className="text-xs text-slate-400">Ghi chú của khách</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Order Details Card */}
+                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Package className="w-4 h-4 text-slate-400" />
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                          Chi tiết hóa đơn
+                        </h3>
+                      </div>
+                      <div className="space-y-2">
+                        {items.map((item) => (
+                          <div
+                            key={item.product.id}
+                            className="flex justify-between text-sm"
+                          >
+                            <span className="text-slate-600 font-medium">
+                              {item.product.name}{" "}
+                              <span className="text-slate-400 font-normal">
+                                x{item.quantity}
+                              </span>
+                            </span>
+                            <span className="font-semibold text-slate-700">
+                              {formatCurrency(
+                                item.product.price * item.quantity
+                              )}
+                            </span>
+                          </div>
+                        ))}
+                        <div className="border-t border-slate-200 pt-2.5 mt-2.5">
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-slate-800">
+                              Tổng hóa đơn tạm tính:
+                            </span>
+                            <span className="text-lg font-black text-teal-600">
+                              {formatCurrency(total)}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Zalo Buttons */}
-                    <div className="space-y-3">
-                      {/* Option 1: Direct Chat (Recommended) */}
-                      <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={handleZaloDirect}
-                        className="w-full py-4 px-5 rounded-2xl bg-[#0068FF] text-white font-bold text-sm shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all flex items-center gap-4"
-                      >
-                        <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
-                          <MessageCircle className="w-5 h-5" />
-                        </div>
-                        <div className="text-left">
-                          <div className="font-bold text-base">
-                            Gửi trực tiếp qua Zalo
-                          </div>
-                          <div className="text-blue-200 text-xs mt-0.5">
-                            Mở chat Zalo {shopPhone} → dán nội dung → gửi
-                          </div>
-                        </div>
-                        <ExternalLink className="w-4 h-4 ml-auto flex-shrink-0 opacity-60" />
-                      </motion.button>
-
-                      {/* Divider */}
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1 h-px bg-slate-200" />
-                        <span className="text-xs text-slate-400 font-medium">
-                          hoặc
-                        </span>
-                        <div className="flex-1 h-px bg-slate-200" />
+                    {/* Error display */}
+                    {apiError && (
+                      <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl p-4 text-xs font-semibold">
+                        ❌ {apiError}
                       </div>
+                    )}
+                  </div>
 
-                      {/* Option 2: Share via Zalo */}
-                      <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={handleZaloShare}
-                        className="w-full py-4 px-5 rounded-2xl bg-white border-2 border-slate-200 text-slate-700 font-bold text-sm hover:border-blue-300 hover:bg-blue-50/50 transition-all flex items-center gap-4"
-                      >
-                        <div className="w-11 h-11 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
-                          <Send className="w-5 h-5 text-slate-500" />
-                        </div>
-                        <div className="text-left">
-                          <div className="font-bold text-base">
-                            Chia sẻ qua Zalo
-                          </div>
-                          <div className="text-slate-400 text-xs mt-0.5">
-                            Mở Zalo → chọn người nhận → gửi (nội dung có sẵn)
-                          </div>
-                        </div>
-                        <ExternalLink className="w-4 h-4 ml-auto flex-shrink-0 opacity-40" />
-                      </motion.button>
-                    </div>
-
-                    {/* Help note */}
-                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
-                      <p className="text-xs text-amber-700 leading-relaxed">
-                        💡 <strong>Cách 1 (khuyên dùng):</strong> Nhấn
-                        &ldquo;Gửi trực tiếp&rdquo; → Zalo mở chat với quán →
-                        nhấn giữ ô chat → chọn &ldquo;Dán&rdquo; → Gửi.
-                        <br />
-                        <br />
-                        💡 <strong>Cách 2:</strong> Nhấn &ldquo;Chia sẻ qua
-                        Zalo&rdquo; → nội dung có sẵn → chọn quán → gửi.
-                      </p>
-                    </div>
+                  {/* Action Button */}
+                  <div className="p-5 border-t border-slate-100 bg-white">
+                    <motion.button
+                      whileHover={{ scale: 1.01 }}
+                      whileTap={{ scale: 0.99 }}
+                      onClick={handleSubmitOrder}
+                      disabled={isSubmitting}
+                      className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-teal-500 to-blue-500 text-white font-bold text-base shadow-lg shadow-teal-500/20 hover:shadow-teal-500/35 transition-all flex items-center justify-center gap-2 disabled:opacity-75 disabled:cursor-not-allowed"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Đang gửi đơn hàng...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-5 h-5" />
+                          Xác nhận & Gửi đơn hàng
+                        </>
+                      )}
+                    </motion.button>
                   </div>
                 </motion.div>
               )}
 
-              {/* ========== STEP 3: Success ========== */}
+              {/* ========== STEP 3: Success Screen ========== */}
               {step === "success" && (
                 <motion.div
                   key="success"
-                  initial={{ opacity: 0, scale: 0.8 }}
+                  initial={{ opacity: 0, scale: 0.82 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  className="flex flex-col items-center justify-center p-10 text-center h-full min-h-[400px]"
+                  exit={{ opacity: 0, scale: 0.82 }}
+                  className="flex flex-col items-center justify-center p-8 text-center h-full min-h-[420px]"
                 >
                   <motion.div
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
                     transition={{
                       type: "spring",
-                      damping: 10,
-                      stiffness: 200,
+                      damping: 11,
+                      stiffness: 220,
                       delay: 0.1,
                     }}
-                    className="w-24 h-24 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center mb-6 shadow-lg shadow-green-500/30"
+                    className="w-20 h-20 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center mb-6 shadow-xl shadow-green-500/20"
                   >
-                    <Check className="w-10 h-10 text-white" />
+                    <Check className="w-9 h-9 text-white" />
                   </motion.div>
                   <h3 className="text-2xl font-bold text-slate-800 mb-2">
-                    Đã mở Zalo!
+                    Đặt hàng thành công!
                   </h3>
-                  <p className="text-slate-500 max-w-xs">
-                    Nội dung đơn hàng đã được sao chép. Vui lòng dán và gửi
-                    trong Zalo.
+                  <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
+                    Đơn hàng của bạn đã được chuyển tới Admin quán thành công.
                   </p>
-                  <p className="text-xs text-slate-400 mt-2">
-                    Đơn hàng đã được lưu vào lịch sử
-                  </p>
+                  <div className="bg-teal-50/50 border border-teal-100 rounded-2xl p-4 my-4 max-w-xs">
+                    <p className="text-xs text-teal-800 leading-relaxed font-medium">
+                      💡 Quán sẽ kiểm tra, lập hóa đơn hoàn chỉnh và liên hệ lại
+                      với bạn qua số điện thoại/Zalo trong ít phút nữa!
+                    </p>
+                  </div>
                   <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
                     onClick={handleClose}
-                    className="mt-6 px-6 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-sm font-medium hover:bg-slate-200 transition-colors"
+                    className="px-8 py-3 rounded-2xl bg-slate-100 text-slate-600 text-sm font-semibold hover:bg-slate-200 transition-colors"
                   >
-                    Đóng
+                    Đóng & Quay lại
                   </motion.button>
                 </motion.div>
               )}
