@@ -24,11 +24,11 @@ export default function Home() {
         onClose={() => {
           setActiveCheckout(null);
         }}
-        onConfirm={async () => {
+        onConfirm={async (customerName: string) => {
           // Build order payload
           const order = {
             customer: {
-              name: "Khách hàng",
+              name: customerName,
               phone: "0815633162",
               address: "Tại quán / bàn",
               note: "",
